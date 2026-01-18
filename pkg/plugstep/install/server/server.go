@@ -35,7 +35,11 @@ func InstallServer(ps *plugstep.Plugstep) {
 	)
 	fmt.Println(b)
 
-	vendor := GetVendor(ps.Config.Server.Vendor)
+	vendor, err := GetVendor(ps.Config.Server.Vendor)
+	if err != nil {
+		log.Error("failed to get server vendor", "err", err)
+		return
+	}
 	download, err := vendor.GetDownload(ps.Config.Server)
 	if err != nil {
 		log.Error(err)

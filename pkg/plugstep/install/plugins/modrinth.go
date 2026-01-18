@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/charmbracelet/log"
 	"github.com/pernydev/plugstep/pkg/plugstep/config"
 )
 
@@ -44,12 +43,12 @@ func (m *ModrinthPluginSource) GetPluginDownload(c config.PluginConfig) (*Plugin
 	}
 	version := findModrinthVersion(response, *c.Version)
 	if version == nil {
-		log.Error("Plugin version not found!", "source", c.Source, "plugin", c.Resource, "version", c.Version)
+		return nil, fmt.Errorf("plugin version not found: %s", *c.Version)
 	}
 
 	file := findModrinthPrimaryFile(version.Files)
-	if version == nil {
-		log.Error("Plugin version has no primary file!", "source", c.Source, "plugin", c.Resource, "version", c.Version)
+	if file == nil {
+		return nil, fmt.Errorf("plugin version has no primary file: %s", *c.Version)
 	}
 
 	return &PluginDownload{

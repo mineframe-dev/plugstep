@@ -56,12 +56,12 @@ func (p *PaperJarVendor) GetDownload(config config.ServerConfig) (*ServerJarDown
 	return &jar, nil
 }
 
-func GetVendor(vendor config.ServerJarVendor) ServerJarVendor {
+func GetVendor(vendor config.ServerJarVendor) (ServerJarVendor, error) {
 	switch vendor {
 	case config.ServerJarVendorPaperMC:
 		return &PaperJarVendor{
 			apiURL: "https://fill.papermc.io",
-		}
+		}, nil
 	}
-	return nil
+	return nil, fmt.Errorf("unknown server vendor: %s", vendor)
 }
