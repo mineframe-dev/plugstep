@@ -25,3 +25,16 @@ jobs:
         with:
           name: plugstep-dev
           path: ./dist/
+
+      - name: Upload wrapper scripts to R2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          aws configure set default.s3.signature_version s3v4
+          aws s3 cp plugstepw "s3://releases/mineframe/plugstep-wrapper/plugstepw" --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp plugstepw.ps1 "s3://releases/mineframe/plugstep-wrapper/plugstepw.ps1" --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp scripts/install-wrapper.sh "s3://releases/mineframe/plugstep-wrapper/install.sh" --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp scripts/install-wrapper.ps1 "s3://releases/mineframe/plugstep-wrapper/install.ps1" --endpoint-url "$R2_ENDPOINT"
