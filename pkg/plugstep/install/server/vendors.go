@@ -3,10 +3,10 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	"github.com/charmbracelet/log"
 	"github.com/pernydev/plugstep/pkg/plugstep/config"
+	"github.com/pernydev/plugstep/pkg/plugstep/utils"
 )
 
 type ServerJarVendor interface {
@@ -23,7 +23,7 @@ type PaperJarVendor struct {
 }
 
 func (p *PaperJarVendor) GetDownload(config config.ServerConfig) (*ServerJarDownload, error) {
-	r, err := http.Get(fmt.Sprintf("%s/v3/projects/%s/versions/%s/builds/%s", p.apiURL, config.Project, config.MinecraftVersion, config.Version))
+	r, err := utils.HTTPClient.Get(fmt.Sprintf("%s/v3/projects/%s/versions/%s/builds/%s", p.apiURL, config.Project, config.MinecraftVersion, config.Version))
 	if err != nil {
 		return nil, err
 	}

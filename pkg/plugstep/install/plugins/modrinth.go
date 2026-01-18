@@ -3,9 +3,9 @@ package plugins
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	"github.com/pernydev/plugstep/pkg/plugstep/config"
+	"github.com/pernydev/plugstep/pkg/plugstep/utils"
 )
 
 type ModrinthPluginSource struct {
@@ -27,7 +27,7 @@ type ModrinthFile struct {
 
 func (m *ModrinthPluginSource) GetPluginDownload(c config.PluginConfig) (*PluginDownload, error) {
 	url := fmt.Sprintf("%s/project/%s/version", m.apiURL, *c.Resource)
-	r, err := http.Get(url)
+	r, err := utils.HTTPClient.Get(url)
 	if err != nil {
 		return nil, err
 	}

@@ -3,9 +3,9 @@ package plugins
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	"github.com/pernydev/plugstep/pkg/plugstep/config"
+	"github.com/pernydev/plugstep/pkg/plugstep/utils"
 )
 
 type PaperHangarPluginSource struct {
@@ -25,7 +25,7 @@ type PaperHangarDownload struct {
 
 func (m *PaperHangarPluginSource) GetPluginDownload(c config.PluginConfig) (*PluginDownload, error) {
 	url := fmt.Sprintf("%s/projects/%s/versions/%s", m.apiURL, *c.Resource, *c.Version)
-	r, err := http.Get(url)
+	r, err := utils.HTTPClient.Get(url)
 	if err != nil {
 		return nil, err
 	}
