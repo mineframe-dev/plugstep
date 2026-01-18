@@ -1,7 +1,7 @@
 package plugins
 
 import (
-	"github.com/pernydev/plugstep/pkg/plugstep/config"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/config"
 )
 
 type PluginSource interface {

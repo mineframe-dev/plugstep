@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
-	"github.com/pernydev/plugstep/pkg/plugstep"
-	"github.com/pernydev/plugstep/pkg/plugstep/commands"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/commands"
 )
 
 //go:embed ascii.txt

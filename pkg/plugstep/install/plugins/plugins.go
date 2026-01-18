@@ -8,9 +8,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
-	"github.com/pernydev/plugstep/pkg/plugstep"
-	"github.com/pernydev/plugstep/pkg/plugstep/config"
-	"github.com/pernydev/plugstep/pkg/plugstep/utils"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/config"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/utils"
 )
 
 var statusLines = map[string]int{}

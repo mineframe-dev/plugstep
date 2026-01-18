@@ -2,9 +2,9 @@ package commands
 
 import (
 	"github.com/charmbracelet/log"
-	"github.com/pernydev/plugstep/pkg/plugstep"
-	"github.com/pernydev/plugstep/pkg/plugstep/install/plugins"
-	"github.com/pernydev/plugstep/pkg/plugstep/install/server"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/install/plugins"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/install/server"
 )
 
 func InstallCommand(ps *plugstep.Plugstep) {

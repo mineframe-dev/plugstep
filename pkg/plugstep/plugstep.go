@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/log"
-	"github.com/pernydev/plugstep/pkg/plugstep/config"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/config"
 )
 
 type Plugstep struct {

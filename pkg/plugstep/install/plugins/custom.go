@@ -3,7 +3,7 @@ package plugins
 import (
 	"fmt"
 
-	"github.com/pernydev/plugstep/pkg/plugstep/config"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/config"
 )
 
 type CustomPluginSource struct{}
