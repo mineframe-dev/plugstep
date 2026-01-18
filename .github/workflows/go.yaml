@@ -1,25 +1,27 @@
-name: Go
+name: Build
 
-on: push
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: "1.24.4"
 
-      - name: Build Linux X86_64
-        run: |
-          mkdir -p ./dist
-          go build -o ./dist/plugstep ./cmd/plugstep
-          
+      - name: Build
+        run: ./scripts/build.sh dev
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: plugstep
-          path: ./dist/plugstep
+          name: plugstep-dev
+          path: ./dist/

@@ -15,6 +15,8 @@ import (
 var ascii string
 var emoticon = "♪(๑ᴖ◡ᴖ๑)♪"
 
+var Version = "dev"
+
 var debug *bool
 var serverDirectory *string
 
@@ -52,7 +54,7 @@ func main() {
 	case "install", "i":
 		commands.InstallCommand(ps)
 		return
-	case "verion", "v":
+	case "version", "v":
 		Version()
 		return
 	}
@@ -73,6 +75,7 @@ func Version() {
 
 	fmt.Println(box.Render(
 		copyright.Render("Copyright © Perny and McWar team") + "\n" +
-			ascii,
+			ascii + "\n" +
+			"Version: " + Version,
 	))
 }
