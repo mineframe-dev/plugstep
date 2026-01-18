@@ -31,6 +31,7 @@ func (m *ModrinthPluginSource) GetPluginDownload(c config.PluginConfig) (*Plugin
 	if err != nil {
 		return nil, err
 	}
+	defer r.Body.Close()
 
 	if r.StatusCode != 200 {
 		return nil, fmt.Errorf("got %d", r.StatusCode)

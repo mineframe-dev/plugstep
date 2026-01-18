@@ -29,6 +29,7 @@ func (m *PaperHangarPluginSource) GetPluginDownload(c config.PluginConfig) (*Plu
 	if err != nil {
 		return nil, err
 	}
+	defer r.Body.Close()
 
 	if r.StatusCode != 200 {
 		return nil, fmt.Errorf("got %d, sent to %d", r.StatusCode, url)

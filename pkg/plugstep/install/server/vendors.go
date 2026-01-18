@@ -27,6 +27,7 @@ func (p *PaperJarVendor) GetDownload(config config.ServerConfig) (*ServerJarDown
 	if err != nil {
 		return nil, err
 	}
+	defer r.Body.Close()
 
 	var response struct {
 		Downloads map[string]struct {
