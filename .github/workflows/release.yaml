@@ -34,3 +34,5 @@ jobs:
             aws s3 cp "$file" "s3://releases/mineframe/plugstep/${{ steps.version.outputs.VERSION }}/$(basename $file)" \
               --endpoint-url "$R2_ENDPOINT"
           done
+          echo -n "${{ steps.version.outputs.VERSION }}" > latest
+          aws s3 cp latest "s3://releases/mineframe/plugstep/latest" --endpoint-url "$R2_ENDPOINT"

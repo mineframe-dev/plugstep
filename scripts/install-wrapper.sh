@@ -2,19 +2,35 @@
 set -euo pipefail
 
 WRAPPER_BASE_URL="${WRAPPER_BASE_URL:-https://releases.perny.dev/mineframe/plugstep-wrapper}"
+RELEASES_BASE_URL="${RELEASES_BASE_URL:-https://releases.perny.dev/mineframe/plugstep}"
 
 echo "Installing plugstepw..."
 
-if command -v curl &> /dev/null; then
-    curl -fSL "$WRAPPER_BASE_URL/plugstepw" -o plugstepw
-elif command -v wget &> /dev/null; then
-    wget -q "$WRAPPER_BASE_URL/plugstepw" -O plugstepw
-else
-    echo "Error: curl or wget required" >&2
-    exit 1
-fi
+download() {
+    local url="$1"
+    local output="$2"
+    if command -v curl &> /dev/null; then
+        curl -fSL "$url" -o "$output"
+    elif command -v wget &> /dev/null; then
+        wget -q "$url" -O "$output"
+    else
+        echo "Error: curl or wget required" >&2
+        exit 1
+    fi
+}
 
+# Download bash wrapper
+download "$WRAPPER_BASE_URL/plugstepw" plugstepw
 chmod +x plugstepw
 
-echo "Installed plugstepw to current directory."
-echo "Create a .plugstep-version file with your desired version (e.g., v1.0.0)"
+# Download PowerShell wrapper
+download "$WRAPPER_BASE_URL/plugstepw.ps1" plugstepw.ps1
+
+# Fetch and set latest version
+echo "Fetching latest version..."
+download "$RELEASES_BASE_URL/latest" .plugstep-version
+
+VERSION=$(cat .plugstep-version)
+echo "Installed plugstepw (bash + PowerShell)"
+echo "Set version to $VERSION"
+echo "Run ./plugstepw to get started"
