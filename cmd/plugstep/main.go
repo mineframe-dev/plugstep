@@ -45,7 +45,7 @@ func main() {
 	}
 
 	if len(args) < 1 {
-		Version()
+		ShowVersion()
 		return
 	}
 	command := args[0]
@@ -55,14 +55,14 @@ func main() {
 		commands.InstallCommand(ps)
 		return
 	case "version", "v":
-		Version()
+		ShowVersion()
 		return
 	}
 
 	log.Info("Unknown command", "command", command)
 }
 
-func Version() {
+func ShowVersion() {
 	var box = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("#cba6f7")).
