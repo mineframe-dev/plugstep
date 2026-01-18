@@ -63,6 +63,7 @@ func InstallServer(ps *plugstep.Plugstep) {
 	err = utils.DownloadFile(download.URL, location)
 	if err != nil {
 		log.Error("failed to download server jar", "err", err)
+		return
 	}
 
 	log.Info("Downloaded server JAR successfully.")

@@ -86,7 +86,11 @@ func removeOld(ps *plugstep.Plugstep) int {
 			continue
 		}
 
-		os.Remove(filepath.Join(ps.ServerDirectory, "plugins", f.Name()))
+		err := os.Remove(filepath.Join(ps.ServerDirectory, "plugins", f.Name()))
+		if err != nil {
+			log.Warn("failed to remove old plugin", "file", f.Name(), "err", err)
+			continue
+		}
 		log.Infof("Removed %s", strings.Split(f.Name(), ".")[0])
 		removed++
 	}
@@ -166,19 +170,27 @@ func installPlugin(ps *plugstep.Plugstep, p *config.PluginConfig) (PluginInstall
 
 	file := filepath.Join(ps.ServerDirectory, "plugins", *p.Resource+".jar")
 
-	hash := ""
+	var hash string
+	var hashErr error
 	switch download.ChecksumType {
 	case ChecksumTypeSha256:
-		hash, _ = utils.CalculateFileSHA256(file)
+		hash, hashErr = utils.CalculateFileSHA256(file)
 	case ChecksumTypeSha512:
-		hash, _ = utils.CalculateFileSHA512(file)
+		hash, hashErr = utils.CalculateFileSHA512(file)
+	}
+
+	if hashErr != nil && !os.IsNotExist(hashErr) {
+		log.Debug("failed to calculate file hash", "file", file, "err", hashErr)
 	}
 
 	if hash == download.Checksum {
 		return PluginInstallStatusChecked, nil
 	}
 
-	utils.DownloadFile(download.URL, file)
+	err = utils.DownloadFile(download.URL, file)
+	if err != nil {
+		return PluginInstallFailed, fmt.Errorf("failed to download plugin: %w", err)
+	}
 
 	return PluginInstallStatusInstalled, nil
 }
