@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PLUGSTEP_BASE_URL="${PLUGSTEP_BASE_URL:-https://releases.perny.dev/mineframe/plugstep}"
+PLUGSTEP_CACHE_DIR="${PLUGSTEP_CACHE_DIR:-$HOME/.cache/plugstep}"
+
+VERSION_FILE=".plugstep-version"
+
+if [ ! -f "$VERSION_FILE" ]; then
+    echo "Error: $VERSION_FILE not found" >&2
+    echo "Create a $VERSION_FILE file containing the version (e.g., v1.0.0)" >&2
+    exit 1
+fi
+
+VERSION=$(cat "$VERSION_FILE" | tr -d '[:space:]')
+if [ -z "$VERSION" ]; then
+    echo "Error: $VERSION_FILE is empty" >&2
+    exit 1
+fi
+
+detect_platform() {
+    local os arch
+
+    case "$(uname -s)" in
+        Linux*)  os="linux" ;;
+        Darwin*) os="darwin" ;;
+        MINGW*|MSYS*|CYGWIN*) os="windows" ;;
+        *)
+            echo "Error: Unsupported OS: $(uname -s)" >&2
+            exit 1
+            ;;
+    esac
+
+    case "$(uname -m)" in
+        x86_64|amd64) arch="amd64" ;;
+        arm64|aarch64) arch="arm64" ;;
+        *)
+            echo "Error: Unsupported architecture: $(uname -m)" >&2
+            exit 1
+            ;;
+    esac
+
+    echo "${os}-${arch}"
+}
+
+PLATFORM=$(detect_platform)
+BINARY_NAME="plugstep-${PLATFORM}"
+if [[ "$PLATFORM" == windows-* ]]; then
+    BINARY_NAME="${BINARY_NAME}.exe"
+fi
+
+CACHED_BINARY="$PLUGSTEP_CACHE_DIR/$VERSION/$BINARY_NAME"
+
+if [ ! -x "$CACHED_BINARY" ]; then
+    echo "Downloading plugstep $VERSION for $PLATFORM..." >&2
+
+    mkdir -p "$PLUGSTEP_CACHE_DIR/$VERSION"
+
+    DOWNLOAD_URL="$PLUGSTEP_BASE_URL/$VERSION/$BINARY_NAME"
+
+    if command -v curl &> /dev/null; then
+        curl -fSL "$DOWNLOAD_URL" -o "$CACHED_BINARY"
+    elif command -v wget &> /dev/null; then
+        wget -q "$DOWNLOAD_URL" -O "$CACHED_BINARY"
+    else
+        echo "Error: curl or wget required" >&2
+        exit 1
+    fi
+
+    chmod +x "$CACHED_BINARY"
+fi
+
+exec "$CACHED_BINARY" "$@"
