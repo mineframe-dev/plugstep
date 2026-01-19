@@ -42,14 +42,24 @@ func (m *ModrinthPluginSource) GetPluginDownload(c config.PluginConfig) (*Plugin
 	if err != nil {
 		return nil, err
 	}
-	version := findModrinthVersion(response, *c.Version)
-	if version == nil {
-		return nil, fmt.Errorf("plugin version not found: %s", *c.Version)
+
+	if len(response) == 0 {
+		return nil, fmt.Errorf("no versions found for plugin")
+	}
+
+	var version *ModrinthVersion
+	if c.Version != nil && *c.Version != "" {
+		version = findModrinthVersion(response, *c.Version)
+		if version == nil {
+			return nil, fmt.Errorf("plugin version not found: %s", *c.Version)
+		}
+	} else {
+		version = &response[0]
 	}
 
 	file := findModrinthPrimaryFile(version.Files)
 	if file == nil {
-		return nil, fmt.Errorf("plugin version has no primary file: %s", *c.Version)
+		return nil, fmt.Errorf("plugin version has no primary file")
 	}
 
 	return &PluginDownload{

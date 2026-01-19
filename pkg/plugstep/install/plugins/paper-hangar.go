@@ -24,7 +24,18 @@ type PaperHangarDownload struct {
 }
 
 func (m *PaperHangarPluginSource) GetPluginDownload(c config.PluginConfig) (*PluginDownload, error) {
-	url := fmt.Sprintf("%s/projects/%s/versions/%s", m.apiURL, *c.Resource, *c.Version)
+	version := ""
+	if c.Version != nil && *c.Version != "" {
+		version = *c.Version
+	} else {
+		latest, err := m.getLatestVersion(*c.Resource)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get latest version: %w", err)
+		}
+		version = latest
+	}
+
+	url := fmt.Sprintf("%s/projects/%s/versions/%s", m.apiURL, *c.Resource, version)
 	r, err := utils.HTTPClient.Get(url)
 	if err != nil {
 		return nil, err
@@ -32,7 +43,7 @@ func (m *PaperHangarPluginSource) GetPluginDownload(c config.PluginConfig) (*Plu
 	defer r.Body.Close()
 
 	if r.StatusCode != 200 {
-		return nil, fmt.Errorf("got %d, sent to %d", r.StatusCode, url)
+		return nil, fmt.Errorf("got %d from %s", r.StatusCode, url)
 	}
 
 	var response PaperHangarVersion
@@ -51,4 +62,24 @@ func (m *PaperHangarPluginSource) GetPluginDownload(c config.PluginConfig) (*Plu
 		Checksum:     download.FileInfo.Sha256Hash,
 		ChecksumType: ChecksumTypeSha256,
 	}, nil
+}
+
+func (m *PaperHangarPluginSource) getLatestVersion(resource string) (string, error) {
+	url := fmt.Sprintf("%s/projects/%s/latestrelease", m.apiURL, resource)
+	r, err := utils.HTTPClient.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer r.Body.Close()
+
+	if r.StatusCode != 200 {
+		return "", fmt.Errorf("got %d from %s", r.StatusCode, url)
+	}
+
+	var version string
+	if err := json.NewDecoder(r.Body).Decode(&version); err != nil {
+		return "", err
+	}
+
+	return version, nil
 }

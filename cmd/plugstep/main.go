@@ -55,6 +55,9 @@ func main() {
 		}
 		commands.UpgradeCommand(*serverDirectory, targetVersion)
 		return
+	case "plugin", "p":
+		commands.PluginCommand(args[1:], *serverDirectory)
+		return
 	}
 
 	ps := plugstep.CreatePlugstep(args, *serverDirectory)
