@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
@@ -13,7 +14,18 @@ import (
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/utils"
 )
 
-var statusLines = map[string]int{}
+const maxConcurrentDownloads = 4
+
+var (
+	statusLines = map[string]int{}
+	renderMu    sync.Mutex
+)
+
+type installResult struct {
+	plugin *config.PluginConfig
+	status PluginInstallStatus
+	err    error
+}
 
 func InstallPlugins(ps *plugstep.Plugstep) error {
 	log.Info("Starting plugin download", "plugins", len(ps.Config.Plugins))
@@ -21,38 +33,65 @@ func InstallPlugins(ps *plugstep.Plugstep) error {
 	InitCache()
 	utils.EnsureDirectory(filepath.Join(ps.ServerDirectory, "plugins"))
 
-	var err error
-	var status PluginInstallStatus
-	var errorPlugin string
-
-	installed := 0
-	checked := 0
-
+	// Render all plugins as waiting
 	for _, plugin := range ps.Config.Plugins {
 		renderInstallBadge(&plugin, PluginInstallWaiting)
 	}
 
-	for _, plugin := range ps.Config.Plugins {
-		status, err = installPlugin(ps, &plugin)
-		if err != nil {
-			errorPlugin = *plugin.Resource
-			renderInstallBadge(&plugin, PluginInstallFailed)
-			break
-		}
-		renderInstallBadge(&plugin, status)
-		fmt.Println("")
-		if status == PluginInstallStatusInstalled {
-			installed++
-		} else {
-			checked++
-		}
+	// Semaphore to limit concurrent downloads
+	sem := make(chan struct{}, maxConcurrentDownloads)
+	results := make(chan installResult, len(ps.Config.Plugins))
+
+	var wg sync.WaitGroup
+	for i := range ps.Config.Plugins {
+		plugin := &ps.Config.Plugins[i]
+		wg.Add(1)
+		go func(p *config.PluginConfig) {
+			defer wg.Done()
+			sem <- struct{}{}        // acquire
+			defer func() { <-sem }() // release
+
+			status, err := installPlugin(ps, p)
+			results <- installResult{plugin: p, status: status, err: err}
+		}(plugin)
 	}
+
+	// Close results channel when all goroutines complete
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results
+	installed := 0
+	checked := 0
+	var errors []string
+	pluginCount := len(ps.Config.Plugins)
+
+	for result := range results {
+		if result.err != nil {
+			renderInstallBadge(result.plugin, PluginInstallFailed)
+			errors = append(errors, fmt.Sprintf("%s: %v", *result.plugin.Resource, result.err))
+		} else {
+			renderInstallBadge(result.plugin, result.status)
+			if result.status == PluginInstallStatusInstalled {
+				installed++
+			} else {
+				checked++
+			}
+		}
+		// Move cursor back to below all plugin lines
+		fmt.Print(strings.Repeat("\033[E", pluginCount))
+	}
+
 	fmt.Printf("\r")
 	fmt.Println("")
 
-	if err != nil {
-		log.Error("Plugin installation failed.", "plugin", errorPlugin, "err", err)
-		return err
+	if len(errors) > 0 {
+		for _, e := range errors {
+			log.Error("Plugin installation failed", "error", e)
+		}
+		return fmt.Errorf("%d plugin(s) failed to install", len(errors))
 	}
 
 	removed := removeOld(ps)
@@ -110,6 +149,9 @@ const (
 )
 
 func renderInstallBadge(p *config.PluginConfig, status PluginInstallStatus) {
+	renderMu.Lock()
+	defer renderMu.Unlock()
+
 	if _, ok := statusLines[*p.Resource]; !ok {
 		for k, v := range statusLines {
 			statusLines[k] = v + 1
@@ -158,7 +200,6 @@ func renderInstallBadge(p *config.PluginConfig, status PluginInstallStatus) {
 }
 
 func installPlugin(ps *plugstep.Plugstep, p *config.PluginConfig) (PluginInstallStatus, error) {
-	renderInstallBadge(p, PluginInstallPrepairing)
 	source := GetSource(p.Source)
 	if source == nil {
 		return "", fmt.Errorf("invalid source")
