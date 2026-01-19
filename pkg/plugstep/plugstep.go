@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/log"
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/config"
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/setup"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/utils"
 )
 
 type Plugstep struct {
@@ -16,6 +17,11 @@ type Plugstep struct {
 }
 
 func (p *Plugstep) Init() error {
+	// Initialize cache database
+	if err := utils.InitCacheDB(p.ServerDirectory); err != nil {
+		log.Debug("Failed to initialize cache", "err", err)
+	}
+
 	configPath := filepath.Join(p.ServerDirectory, "plugstep.toml")
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {

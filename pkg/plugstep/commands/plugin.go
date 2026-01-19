@@ -18,6 +18,13 @@ import (
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/utils"
 )
 
+func initPluginCache(serverDirectory string) {
+	if err := utils.InitCacheDB(serverDirectory); err != nil {
+		log.Debug("Failed to initialize cache", "err", err)
+	}
+	plugins.InitCache()
+}
+
 var (
 	arrowStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#cdd6f4")).
@@ -78,6 +85,8 @@ func PluginCommand(args []string, serverDirectory string) {
 		pluginList(serverDirectory)
 	case "search", "s":
 		pluginSearch(args[1:])
+	case "pin":
+		pluginPin(args[1:], serverDirectory)
 	default:
 		log.Error("Unknown plugin subcommand", "subcommand", args[0])
 		showPluginHelp()
@@ -92,6 +101,7 @@ func showPluginHelp() {
 	fmt.Println("  remove, rm  <name>                   Remove a plugin")
 	fmt.Println("  list, ls                             List installed plugins")
 	fmt.Println("  search, s   <query>                  Search for plugins")
+	fmt.Println("  pin         [name]                   Pin plugin(s) to current version")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  plugstep plugin install                              (interactive)")
@@ -99,6 +109,8 @@ func showPluginHelp() {
 	fmt.Println("  plugstep plugin install hangar:FastAsyncWorldEdit@2.8.1")
 	fmt.Println("  plugstep plugin remove luckperms")
 	fmt.Println("  plugstep plugin search worldedit")
+	fmt.Println("  plugstep plugin pin                                  (pin all)")
+	fmt.Println("  plugstep plugin pin luckperms                        (pin specific)")
 }
 
 type PluginSpec struct {
@@ -205,7 +217,7 @@ func pluginInstall(args []string, serverDirectory string) {
 		}
 	}
 
-	plugins.InitCache()
+	initPluginCache(serverDirectory)
 
 	cfg, configPath, err := loadConfig(serverDirectory)
 	if err != nil {
@@ -469,6 +481,96 @@ func pluginRemove(args []string, serverDirectory string) {
 	}
 
 	log.Info("Removed plugin from config", "name", name)
+}
+
+func pluginPin(args []string, serverDirectory string) {
+	cfg, configPath, err := loadConfig(serverDirectory)
+	if err != nil {
+		log.Error("Failed to load config", "err", err)
+		return
+	}
+
+	if len(cfg.Plugins) == 0 {
+		log.Warn("No plugins configured")
+		return
+	}
+
+	initPluginCache(serverDirectory)
+
+	var targetName string
+	if len(args) > 0 {
+		targetName = args[0]
+	}
+
+	pinned := 0
+	skipped := 0
+
+	for i := range cfg.Plugins {
+		p := &cfg.Plugins[i]
+		name := ""
+		if p.Resource != nil {
+			name = *p.Resource
+		}
+
+		// If a specific plugin was requested, skip others
+		if targetName != "" && name != targetName {
+			continue
+		}
+
+		// Skip already pinned plugins
+		if p.Version != nil && *p.Version != "" {
+			if targetName != "" {
+				log.Info("Plugin already pinned", "name", name, "version", *p.Version)
+			}
+			skipped++
+			continue
+		}
+
+		// Skip custom plugins (no version to pin)
+		if p.Source == config.PluginSourceCustom {
+			if targetName != "" {
+				log.Warn("Cannot pin custom plugin", "name", name)
+			}
+			skipped++
+			continue
+		}
+
+		// Get the current latest version
+		source := plugins.GetSource(p.Source)
+		if source == nil {
+			log.Error("Invalid plugin source", "name", name)
+			continue
+		}
+
+		download, err := source.GetPluginDownload(*p)
+		if err != nil {
+			log.Error("Failed to get plugin version", "name", name, "err", err)
+			continue
+		}
+
+		if download.Version == "" {
+			log.Warn("Could not determine version", "name", name)
+			continue
+		}
+
+		p.Version = &download.Version
+		log.Info("Pinned plugin", "name", name, "version", download.Version)
+		pinned++
+	}
+
+	if targetName != "" && pinned == 0 && skipped == 0 {
+		log.Error("Plugin not found", "name", targetName)
+		return
+	}
+
+	if pinned > 0 {
+		if err := saveConfig(configPath, cfg); err != nil {
+			log.Error("Failed to save config", "err", err)
+			return
+		}
+	}
+
+	log.Info("Pin complete", "pinned", pinned, "skipped", skipped)
 }
 
 type searchResult struct {

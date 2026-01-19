@@ -10,6 +10,7 @@ import (
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep"
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/commands"
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/install/plugins"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/utils"
 )
 
 //go:embed ascii.txt
@@ -39,6 +40,10 @@ func main() {
 	log.Debug("Debug logging enabled.")
 
 	if flushCache != nil && *flushCache {
+		// Initialize cache DB first so we can flush it
+		if err := utils.InitCacheDB(*serverDirectory); err != nil {
+			log.Debug("Failed to init cache for flush", "err", err)
+		}
 		if err := plugins.FlushCache(); err != nil {
 			log.Error("Failed to flush cache", "err", err)
 		}

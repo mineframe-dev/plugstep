@@ -71,6 +71,7 @@ func (m *PaperHangarPluginSource) GetPluginDownload(c config.PluginConfig) (*Plu
 		URL:          downloadInfo.DownloadUrl,
 		Checksum:     downloadInfo.FileInfo.Sha256Hash,
 		ChecksumType: ChecksumTypeSha256,
+		Version:      version,
 	}
 
 	// Cache permanently for this specific version

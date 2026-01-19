@@ -1,108 +1,203 @@
 package utils
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/log"
+	_ "modernc.org/sqlite"
 )
 
 const (
-	CacheTTL      = 15 * time.Minute
-	CacheTTLShort = 15 * time.Minute
+	schemaVersion   = 1
+	CacheTTL        = 15 * time.Minute
+	CacheTTLShort   = 15 * time.Minute
 	CacheTTLForever = 0
 )
 
-type CacheEntry struct {
-	Data      json.RawMessage `json:"data"`
-	Timestamp time.Time       `json:"timestamp"`
-	TTL       time.Duration   `json:"ttl"`
-}
-
 type Cache struct {
-	dir string
+	db        *sql.DB
+	namespace string
+	mu        sync.RWMutex
 }
 
-var globalCaches = map[string]*Cache{}
+var (
+	globalDB   *sql.DB
+	globalDBMu sync.Mutex
+	caches     = map[string]*Cache{}
+)
+
+func initDB(serverDirectory string) (*sql.DB, error) {
+	globalDBMu.Lock()
+	defer globalDBMu.Unlock()
+
+	if globalDB != nil {
+		return globalDB, nil
+	}
+
+	cacheDir := filepath.Join(serverDirectory, ".plugstep")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return nil, err
+	}
+
+	dbPath := filepath.Join(cacheDir, "cache.db")
+
+	// Check schema version of existing db
+	if _, err := os.Stat(dbPath); err == nil {
+		db, err := sql.Open("sqlite", dbPath)
+		if err == nil {
+			var version int
+			err := db.QueryRow("PRAGMA user_version").Scan(&version)
+			db.Close()
+			if err != nil || version != schemaVersion {
+				log.Debug("Cache schema mismatch, rebuilding", "old", version, "new", schemaVersion)
+				os.Remove(dbPath)
+			}
+		}
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set pragmas for performance
+	_, err = db.Exec(`
+		PRAGMA journal_mode=WAL;
+		PRAGMA synchronous=NORMAL;
+		PRAGMA cache_size=1000;
+		PRAGMA temp_store=MEMORY;
+	`)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	// Create schema
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS cache (
+			namespace TEXT NOT NULL,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL,
+			timestamp INTEGER NOT NULL,
+			ttl INTEGER NOT NULL,
+			PRIMARY KEY (namespace, key)
+		);
+		CREATE INDEX IF NOT EXISTS idx_cache_namespace ON cache(namespace);
+	`)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	// Set schema version
+	_, err = db.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion))
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	globalDB = db
+	return db, nil
+}
+
+// InitCacheDB initializes the cache database for a server directory
+func InitCacheDB(serverDirectory string) error {
+	_, err := initDB(serverDirectory)
+	return err
+}
+
+// CloseCache closes the global database connection
+func CloseCache() {
+	globalDBMu.Lock()
+	defer globalDBMu.Unlock()
+	if globalDB != nil {
+		globalDB.Close()
+		globalDB = nil
+	}
+	caches = map[string]*Cache{}
+}
 
 func InitCache(name string) *Cache {
-	if cache, ok := globalCaches[name]; ok {
+	if cache, ok := caches[name]; ok {
 		return cache
 	}
 
-	userCacheDir, err := os.UserCacheDir()
-	if err != nil {
-		log.Debug("Failed to get user cache directory", "err", err)
+	if globalDB == nil {
+		log.Debug("Cache DB not initialized")
 		return nil
 	}
 
-	cacheDir := filepath.Join(userCacheDir, "plugstep", name)
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		log.Debug("Failed to create cache directory", "err", err)
-		return nil
+	cache := &Cache{
+		db:        globalDB,
+		namespace: name,
 	}
-
-	cache := &Cache{dir: cacheDir}
-	globalCaches[name] = cache
+	caches[name] = cache
 	return cache
 }
 
 func GetCache(name string) *Cache {
-	return globalCaches[name]
+	return caches[name]
 }
 
 func FlushCache(name string) error {
-	userCacheDir, err := os.UserCacheDir()
+	if globalDB == nil {
+		return nil
+	}
+
+	_, err := globalDB.Exec("DELETE FROM cache WHERE namespace = ?", name)
 	if err != nil {
 		return err
 	}
 
-	cacheDir := filepath.Join(userCacheDir, "plugstep", name)
-	if err := os.RemoveAll(cacheDir); err != nil {
-		return err
-	}
-
-	delete(globalCaches, name)
-	log.Info("Cache flushed", "dir", cacheDir)
+	delete(caches, name)
+	log.Info("Cache flushed", "namespace", name)
 	return nil
 }
 
-func (c *Cache) cacheKey(key string) string {
-	hash := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(hash[:8])
-}
-
 func (c *Cache) Get(key string, dest interface{}) bool {
-	if c == nil {
+	if c == nil || c.db == nil {
 		return false
 	}
 
-	path := filepath.Join(c.dir, c.cacheKey(key)+".json")
-	data, err := os.ReadFile(path)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	var value string
+	var timestamp, ttl int64
+	err := c.db.QueryRow(
+		"SELECT value, timestamp, ttl FROM cache WHERE namespace = ? AND key = ?",
+		c.namespace, key,
+	).Scan(&value, &timestamp, &ttl)
+
 	if err != nil {
 		return false
 	}
 
-	var entry CacheEntry
-	if err := json.Unmarshal(data, &entry); err != nil {
+	// Check TTL (0 = forever)
+	if ttl > 0 {
+		expiry := time.Unix(0, timestamp).Add(time.Duration(ttl))
+		if time.Now().After(expiry) {
+			// Expired, delete it
+			go func() {
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				c.db.Exec("DELETE FROM cache WHERE namespace = ? AND key = ?", c.namespace, key)
+			}()
+			return false
+		}
+	}
+
+	if err := json.Unmarshal([]byte(value), dest); err != nil {
 		return false
 	}
 
-	// TTL of 0 means forever, otherwise check expiry
-	if entry.TTL > 0 && time.Since(entry.Timestamp) > entry.TTL {
-		os.Remove(path)
-		return false
-	}
-
-	if err := json.Unmarshal(entry.Data, dest); err != nil {
-		return false
-	}
-
-	log.Debug("Cache hit", "key", key)
+	log.Debug("Cache hit", "namespace", c.namespace, "key", key)
 	return true
 }
 
@@ -118,7 +213,7 @@ func (c *Cache) SetPermanent(key string, value interface{}) {
 
 // SetWithTTL caches a value with a specific TTL (0 = forever)
 func (c *Cache) SetWithTTL(key string, value interface{}, ttl time.Duration) {
-	if c == nil {
+	if c == nil || c.db == nil {
 		return
 	}
 
@@ -127,19 +222,15 @@ func (c *Cache) SetWithTTL(key string, value interface{}, ttl time.Duration) {
 		return
 	}
 
-	entry := CacheEntry{
-		Data:      data,
-		Timestamp: time.Now(),
-		TTL:       ttl,
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	entryData, err := json.Marshal(entry)
+	_, err = c.db.Exec(`
+		INSERT OR REPLACE INTO cache (namespace, key, value, timestamp, ttl)
+		VALUES (?, ?, ?, ?, ?)
+	`, c.namespace, key, string(data), time.Now().UnixNano(), int64(ttl))
+
 	if err != nil {
-		return
-	}
-
-	path := filepath.Join(c.dir, c.cacheKey(key)+".json")
-	if err := os.WriteFile(path, entryData, 0644); err != nil {
 		log.Debug("Failed to write cache", "err", err)
 	}
 }

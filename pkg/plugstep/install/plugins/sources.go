@@ -16,9 +16,10 @@ const (
 )
 
 type PluginDownload struct {
-	URL          string
-	Checksum     string
-	ChecksumType ChecksumType
+	URL          string       `json:"url"`
+	Checksum     string       `json:"checksum"`
+	ChecksumType ChecksumType `json:"checksum_type"`
+	Version      string       `json:"version"`
 }
 
 func GetSource(source config.PluginSource) PluginSource {

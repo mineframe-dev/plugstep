@@ -88,6 +88,7 @@ func (m *ModrinthPluginSource) GetPluginDownload(c config.PluginConfig) (*Plugin
 		URL:          file.URL,
 		Checksum:     file.Hashes.Sha512,
 		ChecksumType: ChecksumTypeSha512,
+		Version:      version.VersionNumber,
 	}
 
 	// Cache permanently for this specific version
