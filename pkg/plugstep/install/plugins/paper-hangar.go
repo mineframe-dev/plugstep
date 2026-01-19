@@ -93,9 +93,12 @@ func (m *PaperHangarPluginSource) getLatestVersion(resource string) (string, err
 		return "", fmt.Errorf("got %d from %s", r.StatusCode, url)
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&version); err != nil {
+	var raw interface{}
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		return "", err
 	}
+
+	version = fmt.Sprintf("%v", raw)
 
 	if cache := GetCache(); cache != nil {
 		cache.Set(cacheKey, version)
