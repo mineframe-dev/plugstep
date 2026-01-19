@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/log"
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep"
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/commands"
+	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/install/plugins"
 )
 
 //go:embed ascii.txt
@@ -19,10 +20,12 @@ var Version = "dev"
 
 var debug *bool
 var serverDirectory *string
+var flushCache *bool
 
 func init() {
 	debug = flag.Bool("d", false, "enable debug logging")
 	serverDirectory = flag.String("dir", ".", "path to server")
+	flushCache = flag.Bool("flush-cache", false, "flush plugin cache before running")
 }
 
 func main() {
@@ -34,6 +37,12 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 	log.Debug("Debug logging enabled.")
+
+	if flushCache != nil && *flushCache {
+		if err := plugins.FlushCache(); err != nil {
+			log.Error("Failed to flush cache", "err", err)
+		}
+	}
 
 	args := flag.Args()
 	log.Debug("Loaded args", "args", args)

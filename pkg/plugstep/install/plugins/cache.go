@@ -45,6 +45,21 @@ func GetCache() *PluginCache {
 	return globalCache
 }
 
+func FlushCache() error {
+	userCacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return err
+	}
+
+	cacheDir := filepath.Join(userCacheDir, "plugstep", "plugins")
+	if err := os.RemoveAll(cacheDir); err != nil {
+		return err
+	}
+
+	log.Info("Cache flushed", "dir", cacheDir)
+	return nil
+}
+
 func (c *PluginCache) cacheKey(key string) string {
 	hash := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(hash[:8])
