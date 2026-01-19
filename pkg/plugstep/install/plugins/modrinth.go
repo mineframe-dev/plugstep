@@ -26,21 +26,31 @@ type ModrinthFile struct {
 }
 
 func (m *ModrinthPluginSource) GetPluginDownload(c config.PluginConfig) (*PluginDownload, error) {
-	url := fmt.Sprintf("%s/project/%s/version", m.apiURL, *c.Resource)
-	r, err := utils.HTTPClient.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer r.Body.Close()
-
-	if r.StatusCode != 200 {
-		return nil, fmt.Errorf("got %d", r.StatusCode)
-	}
+	cacheKey := fmt.Sprintf("modrinth:%s:versions", *c.Resource)
 
 	var response []ModrinthVersion
-	err = json.NewDecoder(r.Body).Decode(&response)
-	if err != nil {
-		return nil, err
+	if cache := GetCache(); cache != nil && cache.Get(cacheKey, &response) {
+		// Cache hit
+	} else {
+		url := fmt.Sprintf("%s/project/%s/version", m.apiURL, *c.Resource)
+		r, err := utils.HTTPClient.Get(url)
+		if err != nil {
+			return nil, err
+		}
+		defer r.Body.Close()
+
+		if r.StatusCode != 200 {
+			return nil, fmt.Errorf("got %d", r.StatusCode)
+		}
+
+		err = json.NewDecoder(r.Body).Decode(&response)
+		if err != nil {
+			return nil, err
+		}
+
+		if cache := GetCache(); cache != nil {
+			cache.Set(cacheKey, response)
+		}
 	}
 
 	if len(response) == 0 {

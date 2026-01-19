@@ -18,6 +18,7 @@ var statusLines = map[string]int{}
 func InstallPlugins(ps *plugstep.Plugstep) error {
 	log.Info("Starting plugin download", "plugins", len(ps.Config.Plugins))
 
+	InitCache()
 	utils.EnsureDirectory(filepath.Join(ps.ServerDirectory, "plugins"))
 
 	var err error

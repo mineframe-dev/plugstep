@@ -205,6 +205,8 @@ func pluginInstall(args []string, serverDirectory string) {
 		}
 	}
 
+	plugins.InitCache()
+
 	cfg, configPath, err := loadConfig(serverDirectory)
 	if err != nil {
 		log.Error("Failed to load config", "err", err)
