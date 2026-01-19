@@ -38,12 +38,6 @@ func main() {
 	args := flag.Args()
 	log.Debug("Loaded args", "args", args)
 
-	ps := plugstep.CreatePlugstep(args, *serverDirectory)
-	err := ps.Init()
-	if err != nil {
-		return
-	}
-
 	if len(args) < 1 {
 		ShowVersion()
 		return
@@ -51,11 +45,27 @@ func main() {
 	command := args[0]
 
 	switch command {
-	case "install", "i":
-		commands.InstallCommand(ps)
-		return
 	case "version", "v":
 		ShowVersion()
+		return
+	case "upgrade", "u":
+		targetVersion := ""
+		if len(args) > 1 {
+			targetVersion = args[1]
+		}
+		commands.UpgradeCommand(*serverDirectory, targetVersion)
+		return
+	}
+
+	ps := plugstep.CreatePlugstep(args, *serverDirectory)
+	err := ps.Init()
+	if err != nil {
+		return
+	}
+
+	switch command {
+	case "install", "i":
+		commands.InstallCommand(ps)
 		return
 	}
 
