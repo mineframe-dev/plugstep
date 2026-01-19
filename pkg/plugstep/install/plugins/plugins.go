@@ -7,24 +7,144 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/log"
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep"
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/config"
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/utils"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/log"
 )
 
-const maxConcurrentDownloads = 4
-
-var (
-	statusLines = map[string]int{}
-	renderMu    sync.Mutex
-)
+const maxConcurrentDownloads = 25
 
 type installResult struct {
 	plugin *config.PluginConfig
 	status PluginInstallStatus
 	err    error
+}
+
+type PluginInstallStatus string
+
+const (
+	PluginInstallStatusInstalled PluginInstallStatus = "installed"
+	PluginInstallStatusChecked   PluginInstallStatus = "checked"
+	PluginInstallPreparing       PluginInstallStatus = "preparing"
+	PluginInstallFailed          PluginInstallStatus = "failed"
+	PluginInstallWaiting         PluginInstallStatus = "waiting"
+)
+
+type model struct {
+	plugins   []pluginState
+	results   <-chan installResult
+	installed int
+	checked   int
+	errors    []string
+	total     int
+	done      bool
+}
+
+type pluginState struct {
+	name   string
+	source config.PluginSource
+	status PluginInstallStatus
+}
+
+type pluginResultMsg installResult
+type allDoneMsg struct{}
+
+func (m model) Init() tea.Cmd {
+	return waitForResult(m.results)
+}
+
+func waitForResult(results <-chan installResult) tea.Cmd {
+	return func() tea.Msg {
+		result, ok := <-results
+		if !ok {
+			return allDoneMsg{}
+		}
+		return pluginResultMsg(result)
+	}
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case pluginResultMsg:
+		for i := range m.plugins {
+			if m.plugins[i].name == *msg.plugin.Resource {
+				if msg.err != nil {
+					m.plugins[i].status = PluginInstallFailed
+					m.errors = append(m.errors, fmt.Sprintf("%s: %v", *msg.plugin.Resource, msg.err))
+				} else {
+					m.plugins[i].status = msg.status
+					if msg.status == PluginInstallStatusInstalled {
+						m.installed++
+					} else if msg.status == PluginInstallStatusChecked {
+						m.checked++
+					}
+				}
+				break
+			}
+		}
+		return m, waitForResult(m.results)
+
+	case allDoneMsg:
+		m.done = true
+		return m, tea.Quit
+
+	case tea.KeyMsg:
+		if msg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+func (m model) View() string {
+	var b strings.Builder
+
+	for _, p := range m.plugins {
+		b.WriteString(renderPluginLine(p))
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+func renderPluginLine(p pluginState) string {
+	badge := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#cdd6f4")).
+		PaddingRight(1).
+		Bold(true).
+		PaddingLeft(1).
+		Render("~")
+
+	sourceBadge := lipgloss.NewStyle().
+		Background(lipgloss.Color("#89b4fa")).
+		Foreground(lipgloss.Color("#11111b")).
+		PaddingRight(2).
+		PaddingLeft(2).
+		Transform(strings.ToUpper).
+		Render(string(p.source))
+
+	background := "#f9e2af"
+	switch p.status {
+	case PluginInstallFailed:
+		background = "#f38ba8"
+	case PluginInstallStatusChecked:
+		background = "#89dceb"
+	case PluginInstallStatusInstalled:
+		background = "#a6e3a1"
+	}
+
+	statusBadge := lipgloss.NewStyle().
+		Background(lipgloss.Color(background)).
+		Foreground(lipgloss.Color("#232634")).
+		PaddingRight(2).
+		PaddingLeft(2).
+		Transform(strings.ToUpper).
+		Render(string(p.status))
+
+	return fmt.Sprintf("%s%s%s %s", badge, sourceBadge, statusBadge, p.name)
 }
 
 func InstallPlugins(ps *plugstep.Plugstep) error {
@@ -33,12 +153,15 @@ func InstallPlugins(ps *plugstep.Plugstep) error {
 	InitCache()
 	utils.EnsureDirectory(filepath.Join(ps.ServerDirectory, "plugins"))
 
-	// Render all plugins as waiting
-	for _, plugin := range ps.Config.Plugins {
-		renderInstallBadge(&plugin, PluginInstallWaiting)
+	plugins := make([]pluginState, len(ps.Config.Plugins))
+	for i, p := range ps.Config.Plugins {
+		plugins[i] = pluginState{
+			name:   *p.Resource,
+			source: p.Source,
+			status: PluginInstallWaiting,
+		}
 	}
 
-	// Semaphore to limit concurrent downloads
 	sem := make(chan struct{}, maxConcurrentDownloads)
 	results := make(chan installResult, len(ps.Config.Plugins))
 
@@ -48,55 +171,42 @@ func InstallPlugins(ps *plugstep.Plugstep) error {
 		wg.Add(1)
 		go func(p *config.PluginConfig) {
 			defer wg.Done()
-			sem <- struct{}{}        // acquire
-			defer func() { <-sem }() // release
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
 			status, err := installPlugin(ps, p)
 			results <- installResult{plugin: p, status: status, err: err}
 		}(plugin)
 	}
 
-	// Close results channel when all goroutines complete
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
 
-	// Collect results
-	installed := 0
-	checked := 0
-	var errors []string
-	pluginCount := len(ps.Config.Plugins)
-
-	for result := range results {
-		if result.err != nil {
-			renderInstallBadge(result.plugin, PluginInstallFailed)
-			errors = append(errors, fmt.Sprintf("%s: %v", *result.plugin.Resource, result.err))
-		} else {
-			renderInstallBadge(result.plugin, result.status)
-			if result.status == PluginInstallStatusInstalled {
-				installed++
-			} else {
-				checked++
-			}
-		}
-		// Move cursor back to below all plugin lines
-		fmt.Print(strings.Repeat("\033[E", pluginCount))
+	m := model{
+		plugins: plugins,
+		results: results,
+		total:   len(ps.Config.Plugins),
 	}
 
-	fmt.Printf("\r")
-	fmt.Println("")
+	finalModel, err := tea.NewProgram(m).Run()
+	if err != nil {
+		return fmt.Errorf("UI error: %w", err)
+	}
 
-	if len(errors) > 0 {
-		for _, e := range errors {
+	fm := finalModel.(model)
+
+	if len(fm.errors) > 0 {
+		for _, e := range fm.errors {
 			log.Error("Plugin installation failed", "error", e)
 		}
-		return fmt.Errorf("%d plugin(s) failed to install", len(errors))
+		return fmt.Errorf("%d plugin(s) failed to install", len(fm.errors))
 	}
 
 	removed := removeOld(ps)
 
-	log.Info("Plugins ready.", "installed", installed, "checked", checked, "removed", removed)
+	log.Info("Plugins ready.", "installed", fm.installed, "checked", fm.checked, "removed", removed)
 
 	return nil
 }
@@ -136,67 +246,6 @@ func removeOld(ps *plugstep.Plugstep) int {
 	}
 
 	return removed
-}
-
-type PluginInstallStatus string
-
-const (
-	PluginInstallStatusInstalled PluginInstallStatus = "installed"
-	PluginInstallStatusChecked   PluginInstallStatus = "checked"
-	PluginInstallPrepairing      PluginInstallStatus = "prepairing"
-	PluginInstallFailed          PluginInstallStatus = "failed"
-	PluginInstallWaiting         PluginInstallStatus = "waiting"
-)
-
-func renderInstallBadge(p *config.PluginConfig, status PluginInstallStatus) {
-	renderMu.Lock()
-	defer renderMu.Unlock()
-
-	if _, ok := statusLines[*p.Resource]; !ok {
-		for k, v := range statusLines {
-			statusLines[k] = v + 1
-		}
-		fmt.Println("")
-		statusLines[*p.Resource] = 0
-	}
-
-	badge := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#cdd6f4")).
-		PaddingRight(1).
-		Bold(true).
-		PaddingLeft(1).
-		Render("🡆")
-
-	sourceBadge := lipgloss.NewStyle().
-		Background(lipgloss.Color("#89b4fa")).
-		Foreground(lipgloss.Color("#11111b")).
-		PaddingRight(2).
-		PaddingLeft(2).
-		Transform(strings.ToUpper).
-		Render(string(p.Source))
-
-	background := "#f9e2af"
-	switch status {
-	case PluginInstallFailed:
-		background = "#f38ba8"
-	case PluginInstallStatusChecked:
-		background = "#89dceb"
-	case PluginInstallStatusInstalled:
-		background = "#a6e3a1"
-	}
-
-	statusBadge := lipgloss.NewStyle().
-		Background(lipgloss.Color(background)).
-		Foreground(lipgloss.Color("#232634")).
-		PaddingRight(2).
-		PaddingLeft(2).
-		Transform(strings.ToUpper).
-		Render(string(status))
-
-	cursorNav := strings.Repeat("\033[E", 999)
-
-	fmt.Print(cursorNav + strings.Repeat("\033[F", statusLines[*p.Resource]))
-	fmt.Printf("\r\033[K%s%s%s %s", badge, sourceBadge, statusBadge, *p.Resource)
 }
 
 func installPlugin(ps *plugstep.Plugstep, p *config.PluginConfig) (PluginInstallStatus, error) {
