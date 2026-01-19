@@ -26,10 +26,22 @@ type ModrinthFile struct {
 }
 
 func (m *ModrinthPluginSource) GetPluginDownload(c config.PluginConfig) (*PluginDownload, error) {
-	cacheKey := fmt.Sprintf("modrinth:%s:versions", *c.Resource)
+	isPinned := c.Version != nil && *c.Version != ""
+	cache := GetCache()
 
+	// For pinned versions, check permanent cache first
+	if isPinned {
+		downloadCacheKey := fmt.Sprintf("modrinth:%s:%s:download", *c.Resource, *c.Version)
+		var cached PluginDownload
+		if cache != nil && cache.Get(downloadCacheKey, &cached) {
+			return &cached, nil
+		}
+	}
+
+	// Fetch version list (short TTL cache for latest discovery)
+	versionsCacheKey := fmt.Sprintf("modrinth:%s:versions", *c.Resource)
 	var response []ModrinthVersion
-	if cache := GetCache(); cache != nil && cache.Get(cacheKey, &response) {
+	if cache != nil && cache.Get(versionsCacheKey, &response) {
 		// Cache hit
 	} else {
 		url := fmt.Sprintf("%s/project/%s/version", m.apiURL, *c.Resource)
@@ -48,8 +60,8 @@ func (m *ModrinthPluginSource) GetPluginDownload(c config.PluginConfig) (*Plugin
 			return nil, err
 		}
 
-		if cache := GetCache(); cache != nil {
-			cache.Set(cacheKey, response)
+		if cache != nil {
+			cache.Set(versionsCacheKey, response) // Short TTL
 		}
 	}
 
@@ -58,7 +70,7 @@ func (m *ModrinthPluginSource) GetPluginDownload(c config.PluginConfig) (*Plugin
 	}
 
 	var version *ModrinthVersion
-	if c.Version != nil && *c.Version != "" {
+	if isPinned {
 		version = findModrinthVersion(response, *c.Version)
 		if version == nil {
 			return nil, fmt.Errorf("plugin version not found: %s", *c.Version)
@@ -72,11 +84,19 @@ func (m *ModrinthPluginSource) GetPluginDownload(c config.PluginConfig) (*Plugin
 		return nil, fmt.Errorf("plugin version has no primary file")
 	}
 
-	return &PluginDownload{
+	download := &PluginDownload{
 		URL:          file.URL,
 		Checksum:     file.Hashes.Sha512,
 		ChecksumType: ChecksumTypeSha512,
-	}, nil
+	}
+
+	// Cache permanently for this specific version
+	if cache != nil {
+		downloadCacheKey := fmt.Sprintf("modrinth:%s:%s:download", *c.Resource, version.VersionNumber)
+		cache.SetPermanent(downloadCacheKey, download)
+	}
+
+	return download, nil
 }
 
 func findModrinthVersion(response []ModrinthVersion, version string) *ModrinthVersion {

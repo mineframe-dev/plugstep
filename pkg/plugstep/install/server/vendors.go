@@ -9,21 +9,35 @@ import (
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/utils"
 )
 
+const cacheName = "server"
+
 type ServerJarVendor interface {
 	GetDownload(config config.ServerConfig) (*ServerJarDownload, error)
 }
 
 type ServerJarDownload struct {
-	URL      string
-	Checksum string
+	URL      string `json:"url"`
+	Checksum string `json:"checksum"`
 }
 
 type PaperJarVendor struct {
 	apiURL string
 }
 
-func (p *PaperJarVendor) GetDownload(config config.ServerConfig) (*ServerJarDownload, error) {
-	r, err := utils.HTTPClient.Get(fmt.Sprintf("%s/v3/projects/%s/versions/%s/builds/%s", p.apiURL, config.Project, config.MinecraftVersion, config.Version))
+func initCache() *utils.Cache {
+	return utils.InitCache(cacheName)
+}
+
+func (p *PaperJarVendor) GetDownload(cfg config.ServerConfig) (*ServerJarDownload, error) {
+	cache := initCache()
+	cacheKey := fmt.Sprintf("paper:%s:%s:%s", cfg.Project, cfg.MinecraftVersion, cfg.Version)
+
+	var cached ServerJarDownload
+	if cache != nil && cache.Get(cacheKey, &cached) {
+		return &cached, nil
+	}
+
+	r, err := utils.HTTPClient.Get(fmt.Sprintf("%s/v3/projects/%s/versions/%s/builds/%s", p.apiURL, cfg.Project, cfg.MinecraftVersion, cfg.Version))
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +66,10 @@ func (p *PaperJarVendor) GetDownload(config config.ServerConfig) (*ServerJarDown
 	jar := ServerJarDownload{
 		URL:      download.Url,
 		Checksum: download.Checksums.Sha256,
+	}
+
+	if cache != nil {
+		cache.SetPermanent(cacheKey, jar)
 	}
 
 	return &jar, nil

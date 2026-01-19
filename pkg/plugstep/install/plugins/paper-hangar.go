@@ -24,8 +24,11 @@ type PaperHangarDownload struct {
 }
 
 func (m *PaperHangarPluginSource) GetPluginDownload(c config.PluginConfig) (*PluginDownload, error) {
+	isPinned := c.Version != nil && *c.Version != ""
+	cache := GetCache()
+
 	version := ""
-	if c.Version != nil && *c.Version != "" {
+	if isPinned {
 		version = *c.Version
 	} else {
 		latest, err := m.getLatestVersion(*c.Resource)
@@ -35,43 +38,47 @@ func (m *PaperHangarPluginSource) GetPluginDownload(c config.PluginConfig) (*Plu
 		version = latest
 	}
 
-	cacheKey := fmt.Sprintf("hangar:%s:%s", *c.Resource, version)
-
-	var response PaperHangarVersion
-	if cache := GetCache(); cache != nil && cache.Get(cacheKey, &response) {
-		// Cache hit
-	} else {
-		url := fmt.Sprintf("%s/projects/%s/versions/%s", m.apiURL, *c.Resource, version)
-		r, err := utils.HTTPClient.Get(url)
-		if err != nil {
-			return nil, err
-		}
-		defer r.Body.Close()
-
-		if r.StatusCode != 200 {
-			return nil, fmt.Errorf("got %d from %s", r.StatusCode, url)
-		}
-
-		err = json.NewDecoder(r.Body).Decode(&response)
-		if err != nil {
-			return nil, err
-		}
-
-		if cache := GetCache(); cache != nil {
-			cache.Set(cacheKey, response)
-		}
+	// Check permanent cache for resolved download
+	downloadCacheKey := fmt.Sprintf("hangar:%s:%s:download", *c.Resource, version)
+	var cached PluginDownload
+	if cache != nil && cache.Get(downloadCacheKey, &cached) {
+		return &cached, nil
 	}
 
-	download, ok := response.Downloads["PAPER"]
+	url := fmt.Sprintf("%s/projects/%s/versions/%s", m.apiURL, *c.Resource, version)
+	r, err := utils.HTTPClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Body.Close()
+
+	if r.StatusCode != 200 {
+		return nil, fmt.Errorf("got %d from %s", r.StatusCode, url)
+	}
+
+	var response PaperHangarVersion
+	err = json.NewDecoder(r.Body).Decode(&response)
+	if err != nil {
+		return nil, err
+	}
+
+	downloadInfo, ok := response.Downloads["PAPER"]
 	if !ok {
 		return nil, fmt.Errorf("download not found on version")
 	}
 
-	return &PluginDownload{
-		URL:          download.DownloadUrl,
-		Checksum:     download.FileInfo.Sha256Hash,
+	download := &PluginDownload{
+		URL:          downloadInfo.DownloadUrl,
+		Checksum:     downloadInfo.FileInfo.Sha256Hash,
 		ChecksumType: ChecksumTypeSha256,
-	}, nil
+	}
+
+	// Cache permanently for this specific version
+	if cache != nil {
+		cache.SetPermanent(downloadCacheKey, download)
+	}
+
+	return download, nil
 }
 
 func (m *PaperHangarPluginSource) getLatestVersion(resource string) (string, error) {
