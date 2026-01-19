@@ -3,6 +3,8 @@ package plugins
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"strings"
 
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/config"
 	"forgejo.perny.dev/mineframe/plugstep/pkg/plugstep/utils"
@@ -101,12 +103,12 @@ func (m *PaperHangarPluginSource) getLatestVersion(resource string) (string, err
 		return "", fmt.Errorf("got %d from %s", r.StatusCode, url)
 	}
 
-	var raw interface{}
-	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+	// Response is plain text, not JSON
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
 		return "", err
 	}
-
-	version = fmt.Sprintf("%v", raw)
+	version = strings.TrimSpace(string(body))
 
 	if cache := GetCache(); cache != nil {
 		cache.Set(cacheKey, version)
