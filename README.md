@@ -32,7 +32,7 @@ iwr -useb https://releases.perny.dev/mineframe/plugstep/dev/install-wrapper.ps1 
 
 </details>
 
-This adds `plugstepw` and `.plugstep-version` to your project. Commit both to version control — this ensures everyone on your team uses the same plugstep version without needing to install anything globally.
+This adds `plugstepw` and `.plugstep-version` to **your project**. Commit both to version control. There's no global install by design, as the wrapper lives in your project, everything that needs to interact with it has the correct version.
 
 **Updating:** `./plugstepw upgrade`
 
