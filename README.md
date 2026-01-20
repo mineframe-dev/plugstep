@@ -1,5 +1,5 @@
 <h1 align="center">
-  ⬡ plugstep
+  <img height="100px" src="https://forgejo.perny.dev/mineframe/plugstep/raw/branch/main/images/plugstep-logo.png" />
 </h1>
 
 <p align="center">
