@@ -32,7 +32,7 @@ iwr -useb https://releases.perny.dev/mineframe/plugstep/dev/install-wrapper.ps1 
 
 </details>
 
-This adds `plugstepw` and `.plugstep-version` to **your project**. Commit both to version control. There's no global install by design, as the wrapper lives in your project, everything that needs to interact with it has the correct version.
+This adds `plugstepw` and `.plugstep-version` to **your project**. Commit both to version control. There's no global install by design, because if your server config is reproducible, so should your tooling be. You can think of Plugstepw similarily to Gradlew.
 
 **Updating:** `./plugstepw upgrade`
 
@@ -108,7 +108,7 @@ INFO Plugins ready. installed=1 checked=0
 
 ## What's Mineframe?
 
-Mineframe is a work in progress scalable and developer friendly technology stack for developing Minecraft servers. It relies on technology like Docker, Plugstep and Schemastash (TODO) to create a unified and scalable Mineframe network. Craftops was designed for use on the McWar server, but we decided to turn it into an independent project.
+Mineframe is a work in progress scalable and developer friendly technology stack for developing Minecraft servers. It relies on technology like Docker, Plugstep and Schemastash to create a unified and scalable Mineframe network. Mineframe was designed for use on the McWar server, but we decided to turn it into an independent project.
 
 ## Can I use this on my server?
 
