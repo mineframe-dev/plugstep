@@ -20,7 +20,7 @@
 
 <table>
 <tr>
-<td width="50%">
+<td>
 
 **plugstep.toml**
 
@@ -38,9 +38,14 @@ version = "v5.5.0-bukkit"
 ```
 
 </td>
-<td width="50%">
+<td align="center" valign="middle">
 
-**→ Output**
+**→**
+
+</td>
+<td>
+
+**Output**
 
 ```
 INFO Initializing Plugstep ♪(๑ᴖ◡ᴖ๑)♪
