@@ -8,11 +8,48 @@
 </p>
 
 <p align="center">
+  <a href="#installation">Install</a> •
+  <a href="#usage">Usage</a> •
   <a href="#quick-example">Example</a> •
   <a href="#whats-mineframe">About</a> •
-  <a href="#can-i-use-this-on-my-server">License</a> •
   <a href="#how-is-this-better">Why Plugstep?</a>
 </p>
+
+---
+
+## Installation
+
+```bash
+curl -fsSL https://releases.perny.dev/mineframe/plugstep/dev/install-wrapper.sh | bash
+```
+
+<details>
+<summary>Windows (PowerShell)</summary>
+
+```powershell
+iwr -useb https://releases.perny.dev/mineframe/plugstep/dev/install-wrapper.ps1 | iex
+```
+
+</details>
+
+This adds `plugstepw` and `.plugstep-version` to your project. Commit both to version control — this ensures everyone on your team uses the same plugstep version without needing to install anything globally.
+
+**Updating:** `./plugstepw upgrade`
+
+**Removing:** Delete `plugstepw`, `plugstepw.ps1`, and `.plugstep-version`
+
+## Usage
+
+```bash
+./plugstepw                  # Show version
+./plugstepw install          # Download server JAR and all plugins
+./plugstepw plugin add       # Add a plugin interactively
+./plugstepw plugin remove    # Remove a plugin
+./plugstepw plugin search    # Search for plugins
+./plugstepw plugin list      # List configured plugins
+./plugstepw plugin pin       # Pin plugins to their current versions
+./plugstepw upgrade          # Upgrade plugstep to the latest version
+```
 
 ---
 
