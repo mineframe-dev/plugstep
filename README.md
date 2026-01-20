@@ -21,7 +21,7 @@
 <div align="center">
 <table>
 <tr>
-<td>
+<td align="left">
 
 **plugstep.toml**
 
@@ -44,7 +44,7 @@ version = "v5.5.0-bukkit"
 **→**
 
 </td>
-<td>
+<td align="left">
 
 **Output**
 
