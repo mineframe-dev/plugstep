@@ -23,37 +23,51 @@ type installResult struct {
 	err    error
 }
 
+type progressUpdate struct {
+	name       string
+	downloaded int64
+	total      int64
+}
+
 type PluginInstallStatus string
 
 const (
-	PluginInstallStatusInstalled PluginInstallStatus = "installed"
-	PluginInstallStatusChecked   PluginInstallStatus = "checked"
-	PluginInstallPreparing       PluginInstallStatus = "preparing"
-	PluginInstallFailed          PluginInstallStatus = "failed"
-	PluginInstallWaiting         PluginInstallStatus = "waiting"
+	PluginInstallStatusInstalled   PluginInstallStatus = "installed"
+	PluginInstallStatusChecked     PluginInstallStatus = "checked"
+	PluginInstallPreparing         PluginInstallStatus = "preparing"
+	PluginInstallFailed            PluginInstallStatus = "failed"
+	PluginInstallWaiting           PluginInstallStatus = "waiting"
+	PluginInstallStatusDownloading PluginInstallStatus = "downloading"
 )
 
 type model struct {
-	plugins   []pluginState
-	results   <-chan installResult
-	installed int
-	checked   int
-	errors    []string
-	total     int
-	done      bool
+	plugins    []pluginState
+	results    <-chan installResult
+	progressCh <-chan progressUpdate
+	installed  int
+	checked    int
+	errors     []string
+	total      int
+	done       bool
 }
 
 type pluginState struct {
-	name   string
-	source config.PluginSource
-	status PluginInstallStatus
+	name       string
+	source     config.PluginSource
+	status     PluginInstallStatus
+	downloaded int64
+	total      int64
 }
 
 type pluginResultMsg installResult
+type progressMsg progressUpdate
 type allDoneMsg struct{}
 
 func (m model) Init() tea.Cmd {
-	return waitForResult(m.results)
+	return tea.Batch(
+		waitForResult(m.results),
+		waitForProgress(m.progressCh),
+	)
 }
 
 func waitForResult(results <-chan installResult) tea.Cmd {
@@ -63,6 +77,16 @@ func waitForResult(results <-chan installResult) tea.Cmd {
 			return allDoneMsg{}
 		}
 		return pluginResultMsg(result)
+	}
+}
+
+func waitForProgress(progressCh <-chan progressUpdate) tea.Cmd {
+	return func() tea.Msg {
+		update, ok := <-progressCh
+		if !ok {
+			return nil
+		}
+		return progressMsg(update)
 	}
 }
 
@@ -85,7 +109,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		return m, waitForResult(m.results)
+		return m, tea.Batch(waitForResult(m.results), waitForProgress(m.progressCh))
+
+	case progressMsg:
+		for i := range m.plugins {
+			if m.plugins[i].name == msg.name {
+				if m.plugins[i].status != PluginInstallStatusInstalled &&
+					m.plugins[i].status != PluginInstallStatusChecked &&
+					m.plugins[i].status != PluginInstallFailed {
+					m.plugins[i].downloaded = msg.downloaded
+					m.plugins[i].total = msg.total
+					m.plugins[i].status = PluginInstallStatusDownloading
+				}
+				break
+			}
+		}
+		return m, tea.Batch(waitForResult(m.results), waitForProgress(m.progressCh))
 
 	case allDoneMsg:
 		m.done = true
@@ -121,8 +160,8 @@ func renderPluginLine(p pluginState) string {
 	sourceBadge := lipgloss.NewStyle().
 		Background(lipgloss.Color("#89b4fa")).
 		Foreground(lipgloss.Color("#11111b")).
-		PaddingRight(2).
-		PaddingLeft(2).
+		Width(16).
+		PaddingLeft(1).
 		Transform(strings.ToUpper).
 		Render(string(p.source))
 
@@ -134,17 +173,66 @@ func renderPluginLine(p pluginState) string {
 		background = "#89dceb"
 	case PluginInstallStatusInstalled:
 		background = "#a6e3a1"
+	case PluginInstallStatusDownloading:
+		background = "#89b4fa"
 	}
 
 	statusBadge := lipgloss.NewStyle().
 		Background(lipgloss.Color(background)).
 		Foreground(lipgloss.Color("#232634")).
-		PaddingRight(2).
-		PaddingLeft(2).
+		Width(15).
+		PaddingLeft(1).
 		Transform(strings.ToUpper).
 		Render(string(p.status))
 
-	return fmt.Sprintf("%s%s%s %s", badge, sourceBadge, statusBadge, p.name)
+	nameBadge := lipgloss.NewStyle().
+		Width(30).
+		Render(p.name)
+
+	line := fmt.Sprintf("%s%s%s %s", badge, sourceBadge, statusBadge, nameBadge)
+
+	if p.status == PluginInstallStatusDownloading {
+		line += " " + renderProgressBar(p.downloaded, p.total, 20)
+	}
+
+	return line
+}
+
+func renderProgressBar(downloaded, total int64, width int) string {
+	var percent float64
+	if total > 0 {
+		percent = float64(downloaded) / float64(total)
+	}
+
+	filled := int(percent * float64(width))
+	if filled > width {
+		filled = width
+	}
+
+	filledStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#a6e3a1"))
+	emptyStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#45475a"))
+
+	bar := filledStyle.Render(strings.Repeat("—", filled)) +
+		emptyStyle.Render(strings.Repeat("—", width-filled))
+
+	return fmt.Sprintf("[%s] %s/%s", bar, formatSize(downloaded), formatSize(total))
+}
+
+func formatSize(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+	)
+	switch {
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.0f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
 }
 
 func InstallPlugins(ps *plugstep.Plugstep) error {
@@ -164,6 +252,7 @@ func InstallPlugins(ps *plugstep.Plugstep) error {
 
 	sem := make(chan struct{}, maxConcurrentDownloads)
 	results := make(chan installResult, len(ps.Config.Plugins))
+	progressCh := make(chan progressUpdate, 100)
 
 	var wg sync.WaitGroup
 	for i := range ps.Config.Plugins {
@@ -174,7 +263,7 @@ func InstallPlugins(ps *plugstep.Plugstep) error {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			status, err := installPlugin(ps, p)
+			status, err := installPlugin(ps, p, progressCh)
 			results <- installResult{plugin: p, status: status, err: err}
 		}(plugin)
 	}
@@ -182,12 +271,14 @@ func InstallPlugins(ps *plugstep.Plugstep) error {
 	go func() {
 		wg.Wait()
 		close(results)
+		close(progressCh)
 	}()
 
 	m := model{
-		plugins: plugins,
-		results: results,
-		total:   len(ps.Config.Plugins),
+		plugins:    plugins,
+		results:    results,
+		progressCh: progressCh,
+		total:      len(ps.Config.Plugins),
 	}
 
 	finalModel, err := tea.NewProgram(m).Run()
@@ -248,7 +339,7 @@ func removeOld(ps *plugstep.Plugstep) int {
 	return removed
 }
 
-func installPlugin(ps *plugstep.Plugstep, p *config.PluginConfig) (PluginInstallStatus, error) {
+func installPlugin(ps *plugstep.Plugstep, p *config.PluginConfig, progressCh chan<- progressUpdate) (PluginInstallStatus, error) {
 	source := GetSource(p.Source)
 	if source == nil {
 		return "", fmt.Errorf("invalid source")
@@ -278,7 +369,12 @@ func installPlugin(ps *plugstep.Plugstep, p *config.PluginConfig) (PluginInstall
 		return PluginInstallStatusChecked, nil
 	}
 
-	err = utils.DownloadFile(download.URL, file)
+	err = utils.DownloadFileWithProgress(download.URL, file, func(downloaded, total int64) {
+		select {
+		case progressCh <- progressUpdate{name: *p.Resource, downloaded: downloaded, total: total}:
+		default:
+		}
+	})
 	if err != nil {
 		return PluginInstallFailed, fmt.Errorf("failed to download plugin: %w", err)
 	}

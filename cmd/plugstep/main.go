@@ -22,11 +22,13 @@ var Version = "dev"
 var debug *bool
 var serverDirectory *string
 var flushCache *bool
+var throttleNetwork *int
 
 func init() {
 	debug = flag.Bool("d", false, "enable debug logging")
 	serverDirectory = flag.String("dir", ".", "path to server")
 	flushCache = flag.Bool("flush-cache", false, "flush plugin cache before running")
+	throttleNetwork = flag.Int("throttle-network", 0, "throttle download speed in KB/s (for testing)")
 }
 
 func main() {
@@ -38,6 +40,11 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 	log.Debug("Debug logging enabled.")
+
+	if throttleNetwork != nil && *throttleNetwork > 0 {
+		utils.SetThrottledTransport(*throttleNetwork * 1024)
+		log.Debug("Network throttling enabled", "kb/s", *throttleNetwork)
+	}
 
 	if flushCache != nil && *flushCache {
 		// Initialize cache DB first so we can flush it
