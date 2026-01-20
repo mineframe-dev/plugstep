@@ -20,14 +20,14 @@
 ## Installation
 
 ```bash
-curl -fsSL https://releases.perny.dev/mineframe/plugstep/dev/install-wrapper.sh | bash
+curl -sSL https://releases.perny.dev/mineframe/plugstep-wrapper/install.sh | bash
 ```
 
 <details>
 <summary>Windows (PowerShell)</summary>
 
 ```powershell
-iwr -useb https://releases.perny.dev/mineframe/plugstep/dev/install-wrapper.ps1 | iex
+iwr -useb https://releases.perny.dev/mineframe/plugstep-wrapper/install.ps1 | iex
 ```
 
 </details>
