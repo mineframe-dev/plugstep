@@ -84,6 +84,5 @@ Plugstep is designed to allow a reproducible Minecraft server to be made. This m
 ---
 
 <p align="center">
-  <strong>Part of Mineframe</strong><br>
-  <sub>Opinionated stack for declarative and reproducible Minecraft networks</sub>
+  <img alt="Part of Mineframe. Opinionated stack for declarative and reproducible Minecraft networks" src="https://forgejo.perny.dev/mineframe/plugstep/raw/branch/main/images/mineframe-banner.png" />
 </p>
