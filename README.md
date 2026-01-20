@@ -16,8 +16,9 @@
 
 ---
 
-## Quick Example
+<h2 align="center">Quick Example</h2>
 
+<div align="center">
 <table>
 <tr>
 <td>
@@ -64,6 +65,7 @@ INFO Plugins ready. installed=1 checked=0
 </td>
 </tr>
 </table>
+</div>
 
 ---
 
